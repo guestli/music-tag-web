@@ -243,6 +243,7 @@ def clear_music():
     Attachment.objects.all().delete()
 
 
+@app.task
 def batch_auto_tag_task(batch, source_list, select_mode):
     """
     自动刮削任务
@@ -250,25 +251,32 @@ def batch_auto_tag_task(batch, source_list, select_mode):
     """
     folder_list = TaskRecord.objects.filter(batch=batch, icon="icon-folder").all()
     for folder in folder_list:
-        data = os.scandir(folder.full_path)
         bulk_set = []
-        for entry in data:
-            each = entry.name
-            file_type = each.split(".")[-1]
-            file_name = ".".join(each.split(".")[:-1])
-            if file_type not in ALLOW_TYPE:
-                continue
-            bulk_set.append(TaskRecord(**{
-                "batch": batch,
-                "song_name": file_name,
-                "full_path": f"{folder.full_path}/{each}",
-                "icon": "icon-music",
+        try:
+            with os.scandir(folder.full_path) as data:
+                for entry in data:
+                    each = entry.name
+                    file_type = each.split(".")[-1]
+                    file_name = ".".join(each.split(".")[:-1])
+                    if file_type not in ALLOW_TYPE:
+                        continue
+                    bulk_set.append(TaskRecord(**{
+                        "batch": batch,
+                        "song_name": file_name,
+                        "full_path": f"{folder.full_path}/{each}",
+                        "icon": "icon-music",
 
-            }))
-        TaskRecord.objects.bulk_create(bulk_set)
+                    }))
+        except Exception as e:
+            folder.state = "failed"
+            folder.extra = str(e)
+            folder.save(update_fields=["state", "extra"])
+            continue
+        TaskRecord.objects.bulk_create(bulk_set, batch_size=500)
     task_list = TaskRecord.objects.filter(batch=batch).exclude(icon="icon-folder").all()
     for task in task_list:
         is_match = False
+        errors = []
         for resource in source_list:
             print("开始匹配", resource)
             try:
@@ -276,9 +284,12 @@ def batch_auto_tag_task(batch, source_list, select_mode):
             except Exception as e:
                 print(e)
                 is_match = False
-                break
+                errors.append(f"{resource}: {e}")
+                continue
             if is_match:
                 task.state = "success"
+                task.tag_source = resource
+                task.extra = ""
                 task.save()
                 parent_path = os.path.dirname(task.full_path)
                 Task.objects.update_or_create(full_path=task.full_path, defaults={
@@ -291,6 +302,7 @@ def batch_auto_tag_task(batch, source_list, select_mode):
                 break
         if not is_match:
             task.state = "failed"
+            task.extra = "\n".join(errors)
             task.save()
             parent_path = os.path.dirname(task.full_path)
             Task.objects.update_or_create(full_path=task.full_path, defaults={
