@@ -73,5 +73,5 @@ RUN chmod +x /start-celerybeat
 
 # copy application code to WORKDIR
 COPY . ${APP_HOME}
-RUN python setup_in_docker.py
+RUN python manage.py setup_in_docker || echo "skip setup_in_docker"
 CMD ["/start"]
