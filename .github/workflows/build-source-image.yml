@@ -28,7 +28,7 @@ jobs:
         run: |
           docker buildx build \
             --file compose/prod/django/Dockerfile \
-            --build-arg BUILD_ENVIRONMENT=prod \
+            --build-arg BUILD_ENVIRONMENT=local \
             --tag $GHCR_IMAGE:latest \
             --tag $GHCR_IMAGE:${{ github.sha }} \
             --push \
