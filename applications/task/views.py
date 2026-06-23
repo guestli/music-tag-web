@@ -205,8 +205,8 @@ class TaskViewSets(GenericViewSet):
                 "batch": timestamp
             }))
         TaskRecord.objects.bulk_create(bulk_set, batch_size=500)
-        batch_auto_tag_task(timestamp, source_list, select_mode)
-        return self.success_response()
+        batch_auto_tag_task.delay(timestamp, source_list, select_mode)
+        return self.success_response(data={"batch": timestamp})
 
     @action(methods=['POST'], detail=False)
     def fetch_lyric(self, request, *args, **kwargs):
